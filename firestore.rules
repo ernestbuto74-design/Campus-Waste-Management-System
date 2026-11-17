@@ -1,0 +1,359 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Domain Validators ---
+    function isValidCounter(data) {
+      return data.keys().hasAll(['seq', 'prefix', 'updatedAt'])
+        && data.keys().hasOnly(['seq', 'prefix', 'updatedAt'])
+        && data.seq is int
+        && data.seq >= 1
+        && data.prefix is string
+        && data.prefix.size() >= 2
+        && data.prefix.size() <= 8
+        && data.prefix.matches('^[A-Z]+-$')
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBinEntry(bin) {
+      return bin is map
+        && bin.keys().hasAll(['binType', 'capacityLitres'])
+        && bin.keys().hasOnly(['binType', 'capacityLitres'])
+        && bin.binType in ['General', 'Plastic', 'Paper', 'Glass', 'Metal', 'Organic', 'E-waste', 'Hazardous']
+        && bin.capacityLitres is number
+        && bin.capacityLitres >= 1
+        && bin.capacityLitres <= 100000;
+    }
+
+    function isValidLocation(data) {
+      return data.keys().hasAll(['locationCode', 'name', 'type', 'area', 'bins', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['locationCode', 'name', 'type', 'area', 'bins', 'isActive', 'createdAt', 'updatedAt'])
+        && data.locationCode is string
+        && data.locationCode.size() >= 2
+        && data.locationCode.size() <= 32
+        && data.locationCode.matches('^[A-Z0-9_\\-]+$')
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 120
+        && data.type in ['Hostel', 'Lecture Block', 'Cafeteria', 'Library', 'Administration', 'Sports Ground', 'Other']
+        && data.area is string
+        && data.area.size() >= 1
+        && data.area.size() <= 100
+        && data.bins is list
+        && data.bins.size() <= 30
+        && (data.bins.size() == 0 || isValidBinEntry(data.bins[0]))
+        && data.isActive is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidReporter(rep) {
+      return rep is map
+        && rep.keys().hasAll(['name', 'contact', 'role'])
+        && rep.keys().hasOnly(['name', 'contact', 'role'])
+        && rep.name is string
+        && rep.name.size() >= 1
+        && rep.name.size() <= 100
+        && rep.contact is string
+        && rep.contact.size() <= 100
+        && rep.role in ['Student', 'Lecturer', 'Staff', 'Visitor'];
+    }
+
+    function isValidWasteReport(data) {
+      return data.keys().hasAll([
+          'reportNo', 'locationId', 'reportedBy', 'wasteType', 'estimatedKg',
+          'urgency', 'description', 'status', 'statusReason', 'reportedAt',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'reportNo', 'locationId', 'reportedBy', 'wasteType', 'estimatedKg',
+          'urgency', 'description', 'status', 'statusReason', 'reportedAt',
+          'createdAt', 'updatedAt'
+        ])
+        && data.reportNo is string
+        && data.reportNo.size() >= 7
+        && data.reportNo.size() <= 16
+        && data.reportNo.matches('^WR-[0-9]{4,}$')
+        && isValidId(data.locationId)
+        && isValidReporter(data.reportedBy)
+        && data.wasteType in ['Plastic', 'Paper', 'Glass', 'Metal', 'Organic', 'E-waste', 'Hazardous', 'Mixed']
+        && data.estimatedKg is number
+        && data.estimatedKg >= 0
+        && data.estimatedKg <= 100000
+        && data.urgency in ['Low', 'Medium', 'High']
+        && data.description is string
+        && data.description.size() <= 1000
+        && data.status in ['Open', 'Assigned', 'Collected', 'Closed', 'Rejected', 'Cancelled']
+        && data.statusReason is string
+        && data.statusReason.size() <= 500
+        && (!(data.status in ['Rejected', 'Cancelled']) || data.statusReason.size() >= 1)
+        && data.reportedAt is timestamp
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidReportTransition(oldStatus, newStatus) {
+      return oldStatus == newStatus
+        || (oldStatus == 'Open' && newStatus in ['Assigned', 'Rejected', 'Cancelled'])
+        || (oldStatus == 'Assigned' && newStatus in ['Collected', 'Open'])
+        || (oldStatus == 'Collected' && newStatus == 'Closed')
+        || (oldStatus == 'Closed' && newStatus == 'Collected');
+    }
+
+    function isValidAssignee(assignee) {
+      return assignee is map
+        && assignee.keys().hasAll(['name', 'staffId'])
+        && assignee.keys().hasOnly(['name', 'staffId'])
+        && assignee.name is string
+        && assignee.name.size() >= 1
+        && assignee.name.size() <= 100
+        && assignee.staffId is string
+        && assignee.staffId.size() <= 50;
+    }
+
+    function isValidCollectionTask(data) {
+      return data.keys().hasAll([
+          'taskNo', 'reportId', 'assignedTo', 'scheduledDate', 'equipment',
+          'status', 'startedAt', 'completedAt', 'actualKg', 'remarks',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'taskNo', 'reportId', 'assignedTo', 'scheduledDate', 'equipment',
+          'status', 'startedAt', 'completedAt', 'actualKg', 'remarks',
+          'createdAt', 'updatedAt'
+        ])
+        && data.taskNo is string
+        && data.taskNo.size() >= 7
+        && data.taskNo.size() <= 16
+        && data.taskNo.matches('^CT-[0-9]{4,}$')
+        && isValidId(data.reportId)
+        && isValidAssignee(data.assignedTo)
+        && data.scheduledDate is string
+        && data.scheduledDate.size() == 10
+        && data.scheduledDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.equipment is string
+        && data.equipment.size() <= 300
+        && data.status in ['Scheduled', 'In Progress', 'Completed', 'Cancelled']
+        && (data.startedAt == null || data.startedAt is timestamp)
+        && (data.completedAt == null || data.completedAt is timestamp)
+        && (data.actualKg == null || (data.actualKg is number && data.actualKg >= 0 && data.actualKg <= 100000))
+        && (data.status != 'Completed' || (data.actualKg is number && data.actualKg >= 0 && data.completedAt is timestamp))
+        && data.remarks is string
+        && data.remarks.size() <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTaskTransition(oldStatus, newStatus) {
+      return oldStatus == newStatus
+        || (oldStatus == 'Scheduled' && newStatus in ['In Progress', 'Cancelled'])
+        || (oldStatus == 'In Progress' && newStatus in ['Completed', 'Cancelled']);
+    }
+
+    function isValidRecyclingRecord(data) {
+      return data.keys().hasAll([
+          'recordNo', 'taskId', 'materialType', 'receivedKg', 'recycledKg',
+          'disposalMethod', 'facility', 'processedDate', 'recoveryRate',
+          'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'recordNo', 'taskId', 'materialType', 'receivedKg', 'recycledKg',
+          'disposalMethod', 'facility', 'processedDate', 'recoveryRate',
+          'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.recordNo is string
+        && data.recordNo.size() >= 7
+        && data.recordNo.size() <= 16
+        && data.recordNo.matches('^RR-[0-9]{4,}$')
+        && isValidId(data.taskId)
+        && data.materialType in ['Plastic', 'Paper', 'Glass', 'Metal', 'Organic', 'E-waste', 'Other']
+        && data.receivedKg is number
+        && data.receivedKg > 0
+        && data.receivedKg <= 100000
+        && data.recycledKg is number
+        && data.recycledKg >= 0
+        && data.recycledKg <= data.receivedKg
+        && data.disposalMethod in ['Composted', 'Reused', 'Landfill', 'Specialist treatment', 'None']
+        && data.facility is string
+        && data.facility.size() <= 150
+        && data.processedDate is string
+        && data.processedDate.size() == 10
+        && data.processedDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.recoveryRate is number
+        && data.recoveryRate >= 0
+        && data.recoveryRate <= 100
+        && data.notes is string
+        && data.notes.size() <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Startup connection check document
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // Atomic sequence counters
+    match /counters/{counterId} {
+      allow get: if isValidId(counterId) && counterId in ['wasteReports', 'collectionTasks', 'recyclingRecords'];
+      allow list: if false;
+      allow create: if isValidId(counterId)
+        && counterId in ['wasteReports', 'collectionTasks', 'recyclingRecords']
+        && isValidCounter(incoming())
+        && incoming().seq == 1
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(counterId)
+        && counterId in ['wasteReports', 'collectionTasks', 'recyclingRecords']
+        && isValidCounter(incoming())
+        && incoming().prefix == existing().prefix
+        && incoming().seq == existing().seq + 1
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['seq', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // Campus locations
+    match /locations/{locationId} {
+      allow get: if isValidId(locationId);
+      allow list: if true;
+      allow create: if isValidId(locationId)
+        && isValidLocation(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(locationId)
+        && isValidLocation(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['locationCode', 'name', 'type', 'area', 'bins', 'isActive', 'updatedAt']);
+      allow delete: if isValidId(locationId);
+    }
+
+    // Waste reports
+    match /wasteReports/{reportId} {
+      allow get: if isValidId(reportId);
+      allow list: if true;
+      allow create: if isValidId(reportId)
+        && isValidWasteReport(incoming())
+        && incoming().status == 'Open'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/locations/$(incoming().locationId))
+        && get(/databases/$(database)/documents/locations/$(incoming().locationId)).data.isActive == true;
+      allow update: if isValidId(reportId)
+        && isValidWasteReport(incoming())
+        && incoming().reportNo == existing().reportNo
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && isValidReportTransition(existing().status, incoming().status)
+        && (
+          // Action 1: Edit report details while Open or Assigned
+          (existing().status in ['Open', 'Assigned']
+            && incoming().status == existing().status
+            && incoming().diff(existing()).affectedKeys().hasOnly(['locationId', 'reportedBy', 'wasteType', 'estimatedKg', 'urgency', 'description', 'updatedAt'])
+            && exists(/databases/$(database)/documents/locations/$(incoming().locationId))
+            && get(/databases/$(database)/documents/locations/$(incoming().locationId)).data.isActive == true)
+          ||
+          // Action 2: Reject or Cancel an Open report with statusReason
+          (existing().status == 'Open'
+            && incoming().status in ['Rejected', 'Cancelled']
+            && incoming().statusReason.size() >= 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'statusReason', 'updatedAt']))
+          ||
+          // Action 3: System workflow status transitions (Open->Assigned, Assigned->Collected/Open, Collected<->Closed)
+          (incoming().status != existing().status
+            && !(incoming().status in ['Rejected', 'Cancelled'])
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+        );
+      allow delete: if isValidId(reportId);
+    }
+
+    // Collection tasks
+    match /collectionTasks/{taskId} {
+      allow get: if isValidId(taskId);
+      allow list: if true;
+      allow create: if isValidId(taskId)
+        && isValidCollectionTask(incoming())
+        && incoming().status == 'Scheduled'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/wasteReports/$(incoming().reportId))
+        && get(/databases/$(database)/documents/wasteReports/$(incoming().reportId)).data.status == 'Open';
+      allow update: if isValidId(taskId)
+        && isValidCollectionTask(incoming())
+        && incoming().taskNo == existing().taskNo
+        && incoming().reportId == existing().reportId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && isValidTaskTransition(existing().status, incoming().status)
+        && !(existing().status in ['Completed', 'Cancelled'])
+        && (
+          // Action 1: Edit task details while Scheduled or In Progress
+          (incoming().status == existing().status
+            && incoming().diff(existing()).affectedKeys().hasOnly(['assignedTo', 'scheduledDate', 'equipment', 'remarks', 'updatedAt']))
+          ||
+          // Action 2: Start task (Scheduled -> In Progress)
+          (existing().status == 'Scheduled'
+            && incoming().status == 'In Progress'
+            && incoming().startedAt is timestamp
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'startedAt', 'updatedAt']))
+          ||
+          // Action 3: Complete task (In Progress -> Completed)
+          (existing().status == 'In Progress'
+            && incoming().status == 'Completed'
+            && incoming().completedAt is timestamp
+            && incoming().actualKg is number
+            && incoming().actualKg >= 0
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'completedAt', 'actualKg', 'remarks', 'updatedAt']))
+          ||
+          // Action 4: Cancel task (Scheduled or In Progress -> Cancelled)
+          (existing().status in ['Scheduled', 'In Progress']
+            && incoming().status == 'Cancelled'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'remarks', 'updatedAt']))
+        );
+      allow delete: if isValidId(taskId);
+    }
+
+    // Recycling records
+    match /recyclingRecords/{recordId} {
+      allow get: if isValidId(recordId);
+      allow list: if true;
+      allow create: if isValidId(recordId)
+        && isValidRecyclingRecord(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/collectionTasks/$(incoming().taskId))
+        && get(/databases/$(database)/documents/collectionTasks/$(incoming().taskId)).data.status == 'Completed';
+      allow update: if isValidId(recordId)
+        && isValidRecyclingRecord(incoming())
+        && incoming().recordNo == existing().recordNo
+        && incoming().taskId == existing().taskId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'materialType', 'receivedKg', 'recycledKg', 'disposalMethod',
+          'facility', 'processedDate', 'recoveryRate', 'notes', 'updatedAt'
+        ]);
+      allow delete: if isValidId(recordId);
+    }
+  }
+}

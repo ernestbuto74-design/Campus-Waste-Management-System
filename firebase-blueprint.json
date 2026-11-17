@@ -1,0 +1,357 @@
+{
+  "entities": {
+    "Counter": {
+      "title": "Counter",
+      "description": "Atomic sequence counter used to generate sequential human-readable IDs (WR-0001, CT-0001, RR-0001).",
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "number",
+          "description": "Current monotonic sequence integer."
+        },
+        "prefix": {
+          "type": "string",
+          "maxLength": 8,
+          "minLength": 2,
+          "pattern": "^[A-Z]+-$",
+          "description": "Document number prefix such as WR-, CT-, or RR-."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last counter increment."
+        }
+      },
+      "required": ["seq", "prefix", "updatedAt"]
+    },
+    "Location": {
+      "title": "Location",
+      "description": "Campus waste collection location with embedded bin inventory.",
+      "type": "object",
+      "properties": {
+        "locationCode": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9_-]+$",
+          "description": "Unique uppercase campus location identifier (e.g., LOC-001)."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Human-readable name of the campus location."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "Hostel",
+            "Lecture Block",
+            "Cafeteria",
+            "Library",
+            "Administration",
+            "Sports Ground",
+            "Other"
+          ],
+          "description": "Facility category."
+        },
+        "area": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Campus zone or sector."
+        },
+        "bins": {
+          "type": "array",
+          "description": "Embedded array of bin objects ({ binType, capacityLitres })."
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether the location can receive new waste reports."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": ["locationCode", "name", "type", "area", "bins", "isActive", "createdAt", "updatedAt"]
+    },
+    "WasteReport": {
+      "title": "WasteReport",
+      "description": "Reported campus waste incident referencing a location document.",
+      "type": "object",
+      "properties": {
+        "reportNo": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 16,
+          "pattern": "^WR-[0-9]{4,}$",
+          "description": "System-generated unique report number (e.g., WR-0001)."
+        },
+        "locationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Document ID reference to locations collection."
+        },
+        "reportedBy": {
+          "type": "object",
+          "description": "Embedded reporter contact object ({ name, contact, role })."
+        },
+        "wasteType": {
+          "type": "string",
+          "enum": ["Plastic", "Paper", "Glass", "Metal", "Organic", "E-waste", "Hazardous", "Mixed"],
+          "description": "Primary waste stream classification."
+        },
+        "estimatedKg": {
+          "type": "number",
+          "description": "Estimated weight in kilograms (>= 0)."
+        },
+        "urgency": {
+          "type": "string",
+          "enum": ["Low", "Medium", "High"],
+          "description": "Collection priority."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Optional operational details."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Open", "Assigned", "Collected", "Closed", "Rejected", "Cancelled"],
+          "description": "Workflow state of the waste report."
+        },
+        "statusReason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Reason required when status is Rejected or Cancelled."
+        },
+        "reportedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the waste was reported."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": [
+        "reportNo",
+        "locationId",
+        "reportedBy",
+        "wasteType",
+        "estimatedKg",
+        "urgency",
+        "description",
+        "status",
+        "statusReason",
+        "reportedAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CollectionTask": {
+      "title": "CollectionTask",
+      "description": "Scheduled waste pickup task referencing an Open waste report.",
+      "type": "object",
+      "properties": {
+        "taskNo": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 16,
+          "pattern": "^CT-[0-9]{4,}$",
+          "description": "System-generated unique task number (e.g., CT-0001)."
+        },
+        "reportId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Document ID reference to wasteReports collection."
+        },
+        "assignedTo": {
+          "type": "object",
+          "description": "Embedded assignee object ({ name, staffId })."
+        },
+        "scheduledDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Scheduled pickup date (YYYY-MM-DD)."
+        },
+        "equipment": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Assigned collection gear or vehicle."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Scheduled", "In Progress", "Completed", "Cancelled"],
+          "description": "Current execution state."
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp stamped when status transitions to In Progress."
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp stamped when status transitions to Completed."
+        },
+        "actualKg": {
+          "type": "number",
+          "description": "Actual collected weight in kilograms (required on Completed)."
+        },
+        "remarks": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Optional field notes."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": [
+        "taskNo",
+        "reportId",
+        "assignedTo",
+        "scheduledDate",
+        "equipment",
+        "status",
+        "remarks",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "RecyclingRecord": {
+      "title": "RecyclingRecord",
+      "description": "Material recovery outcome linked to a Completed collection task.",
+      "type": "object",
+      "properties": {
+        "recordNo": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 16,
+          "pattern": "^RR-[0-9]{4,}$",
+          "description": "System-generated unique record number (e.g., RR-0001)."
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Document ID reference to collectionTasks collection."
+        },
+        "materialType": {
+          "type": "string",
+          "enum": ["Plastic", "Paper", "Glass", "Metal", "Organic", "E-waste", "Other"],
+          "description": "Processed material stream."
+        },
+        "receivedKg": {
+          "type": "number",
+          "description": "Total kilograms received from the task (> 0)."
+        },
+        "recycledKg": {
+          "type": "number",
+          "description": "Kilograms successfully recovered (0 to receivedKg)."
+        },
+        "disposalMethod": {
+          "type": "string",
+          "enum": ["Composted", "Reused", "Landfill", "Specialist treatment", "None"],
+          "description": "Disposition method for residual or non-recycled fraction."
+        },
+        "facility": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Sorting facility or recycler name."
+        },
+        "processedDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Processing date (YYYY-MM-DD)."
+        },
+        "recoveryRate": {
+          "type": "number",
+          "description": "Auto-calculated percentage ((recycledKg / receivedKg) * 100 rounded to 1 decimal)."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Optional processing notes."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": [
+        "recordNo",
+        "taskId",
+        "materialType",
+        "receivedKg",
+        "recycledKg",
+        "disposalMethod",
+        "facility",
+        "processedDate",
+        "recoveryRate",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/counters/{counterId}": {
+      "schema": { "$ref": "#/entities/Counter" },
+      "description": "Stores sequence counters for wasteReports, collectionTasks, and recyclingRecords."
+    },
+    "/locations/{locationId}": {
+      "schema": { "$ref": "#/entities/Location" },
+      "description": "Stores campus waste collection locations and their embedded bin inventories."
+    },
+    "/wasteReports/{reportId}": {
+      "schema": { "$ref": "#/entities/WasteReport" },
+      "description": "Stores campus waste reports referencing locations."
+    },
+    "/collectionTasks/{taskId}": {
+      "schema": { "$ref": "#/entities/CollectionTask" },
+      "description": "Stores scheduled and executed collection tasks referencing wasteReports."
+    },
+    "/recyclingRecords/{recordId}": {
+      "schema": { "$ref": "#/entities/RecyclingRecord" },
+      "description": "Stores recycling and disposal outcomes referencing completed collectionTasks."
+    }
+  }
+}

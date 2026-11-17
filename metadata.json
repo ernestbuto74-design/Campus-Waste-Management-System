@@ -1,0 +1,6 @@
+{
+  "name": "Campus Waste Management Information System (CWMIS)",
+  "description": "NoSQL Campus Waste Management Information System built with HTML, CSS, vanilla JavaScript ES Modules, and Firebase Cloud Firestore to track campus waste reports, collection tasks, recycling outcomes, and recovery analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
