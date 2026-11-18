@@ -6,12 +6,12 @@
     <title>Campus Waste Management System</title>
     <meta
       name="description"
-      content="NoSQL Campus Waste Management System built with HTML, CSS, vanilla JavaScript ES Modules, and Firebase Cloud Firestore to track campus waste reports, collection tasks, recycling outcomes, and recovery analytics."
+      content="NoSQL Campus Waste Management System built with HTML, CSS, vanilla JavaScript ES Modules, and MongoDB Atlas to track campus waste reports, collection tasks, recycling outcomes, and recovery analytics."
     />
     <meta property="og:title" content="Campus Waste Management System" />
     <meta
       property="og:description"
-      content="Track campus waste reports, schedule collection tasks, record recycling outcomes, and monitor real-time recovery analytics with Firebase Cloud Firestore."
+      content="Track campus waste reports, schedule collection tasks, record recycling outcomes, and monitor real-time recovery analytics with MongoDB Atlas."
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -179,13 +179,13 @@
               <div>
                 <h2 class="section-heading">Campus Waste &amp; Recovery Overview</h2>
                 <p class="section-subtitle">
-                  Live Firestore aggregations across locations, incident reports, scheduled collections, and material recovery.
+                  Live MongoDB Atlas aggregations across locations, incident reports, scheduled collections, and material recovery.
                 </p>
               </div>
               <div class="section-meta-inline">
                 <span id="dash-turnaround-summary" class="tabular-nums">Avg. turnaround: — days</span>
                 <span aria-hidden="true">·</span>
-                <span id="dash-last-sync">Synced with Cloud Firestore</span>
+                <span id="dash-last-sync">Synced with MongoDB Atlas</span>
               </div>
             </div>
 
@@ -230,7 +230,7 @@
 
             <!-- Empty Dashboard Prompt when 0 records -->
             <div id="dashboard-empty-state" class="empty-panel" hidden>
-              <h3>No campus waste records in Firestore yet</h3>
+              <h3>No campus waste records in MongoDB yet</h3>
               <p>
                 Seed sample campus data to populate locations, multi-month waste reports, collection tasks, and recycling analytics, or create your first location.
               </p>
@@ -552,8 +552,8 @@
                     <select id="rep-filter-location" aria-label="Filter by location">
                       <option value="all">All Locations</option>
                     </select>
-                    <button type="button" id="btn-rep-composite-query" class="btn-secondary btn-sm" title="Execute Firestore server-side compound query with active filters">
-                      Run Firestore Query
+                    <button type="button" id="btn-rep-composite-query" class="btn-secondary btn-sm" title="Execute MongoDB server-side compound query with active filters">
+                      Run MongoDB Query
                     </button>
                   </div>
                 </header>

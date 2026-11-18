@@ -2,7 +2,7 @@
  * app.js
  * ---------------------------------------------------------------------------
  * UI Controller for the Campus Waste Management System.
- * Pure vanilla JavaScript (ES Modules) + Chart.js + Firestore service layer.
+ * Pure vanilla JavaScript (ES Modules) + Chart.js + MongoDB Atlas API service layer.
  * ---------------------------------------------------------------------------
  */
 
@@ -261,7 +261,7 @@ function closeMobileSidebar() {
 }
 
 // ============================================================================
-// 6. Render All Views from Live Firestore State
+// 6. Render All Views from Live MongoDB Atlas State
 // ============================================================================
 
 function renderAll() {
@@ -783,7 +783,7 @@ function renderReportsTable() {
   });
 
   document.getElementById('rep-count-summary').textContent = `${filtered.length} of ${state.reports.length} reports${
-    state.reportsServerOverride ? ' (Firestore server query)' : ''
+    state.reportsServerOverride ? ' (MongoDB server query)' : ''
   }`;
   const tbody = document.getElementById('tbody-reports');
 
@@ -1193,22 +1193,21 @@ function renderRecyclingTable() {
 
 function openNoSqlGuideModal() {
   openModal({
-    title: 'Firestore NoSQL Architecture & Composite Indexes',
+    title: 'MongoDB Atlas NoSQL Architecture & Indexes',
     bodyHtml: `
-      <p>The Campus Waste Management System demonstrates core Firestore NoSQL design patterns backed by transactional business rules (BR-01 through BR-14):</p>
-      <div class="code-block">Collections & Document Relationships:
-• counters/{wasteReports|collectionTasks|recyclingRecords} -> atomic IDs (WR-0001, CT-0001, RR-0001)
-• locations/{id} -> Embedded array: bins: [{ binType, capacityLitres }]
-• wasteReports/{id} -> Reference: locationId -> locations/{id} | Embedded: reportedBy { name, contact, role }
-• collectionTasks/{id} -> Reference: reportId -> wasteReports/{id} | Embedded: assignedTo { name, staffId }
-• recyclingRecords/{id} -> Reference: taskId -> collectionTasks/{id} | Auto recoveryRate (%)</div>
-      <p><strong>Composite Indexes (defined in firestore.indexes.json):</strong> Enable these in Firebase Console if prompted when executing server-side compound queries:</p>
-      <div class="code-block">1. wasteReports: (status ASC, reportedAt DESC)
-2. wasteReports: (status ASC, wasteType ASC, reportedAt DESC)
-3. wasteReports: (locationId ASC, status ASC, reportedAt DESC)
-4. collectionTasks: (status ASC, scheduledDate DESC)
-5. recyclingRecords: (materialType ASC, processedDate DESC)</div>
-      <p><strong>Custom Firebase Project Config:</strong> Edit <code>src/firebase-config.js</code> with your Firebase Console Web App config object for standalone hosting.</p>
+      <p>The Campus Waste Management System connects to <strong>MongoDB Atlas</strong> (database <code>campuswasteDB</code>) via the official <code>mongodb</code> driver and enforces all 14 business rules (BR-01 through BR-14) on the server:</p>
+      <div class="code-block">Collections & Document Relationships (campuswasteDB):
+• counters -> atomic sequential IDs (WR-0001, CT-0001, RR-0001)
+• locations -> Embedded array: bins: [{ binType, capacityLitres }]
+• wasteReports -> Reference: locationId -> locations._id | Embedded: reportedBy { name, contact, role }
+• collectionTasks -> Reference: reportId -> wasteReports._id | Embedded: assignedTo { name, staffId }
+• recyclingRecords -> Reference: taskId -> collectionTasks._id | Auto recoveryRate (%)</div>
+      <p><strong>Server-Side MongoDB Indexes (ensured automatically):</strong></p>
+      <div class="code-block">1. locations: { locationCode: 1 } (unique), { isActive: 1, locationCode: 1 }
+2. wasteReports: { reportNo: 1 } (unique), { status: 1, reportedAt: -1 }, { status: 1, wasteType: 1, reportedAt: -1 }, { locationId: 1, status: 1, reportedAt: -1 }
+3. collectionTasks: { taskNo: 1 } (unique), { reportId: 1 }, { status: 1, scheduledDate: -1 }
+4. recyclingRecords: { recordNo: 1 } (unique), { taskId: 1 }, { materialType: 1, processedDate: -1 }</div>
+      <p><strong>Connection Configuration:</strong> Set <code>MONGODB_URI</code> in your server environment secrets; the Express backend caches the client pool across requests.</p>
     `,
     actions: [{ label: 'Close', className: 'btn-primary', onClick: () => closeModal() }],
   });
@@ -1223,10 +1222,10 @@ async function handleSeedSampleData() {
   const triggerBtn = document.getElementById('btn-seed-sample');
   state.isSeeding = true;
   triggerBtn.disabled = true;
-  triggerBtn.textContent = 'Seeding Firestore...';
+  triggerBtn.textContent = 'Seeding MongoDB...';
 
   try {
-    const summary = await seedSampleData(state.locations);
+    const summary = await seedSampleData();
     showToast(
       `Seeded ${summary.createdLocations} new locations, ${summary.createdReports} reports, ${summary.createdTasks} tasks, and ${summary.createdRecycling} recycling records.`,
       'success'
@@ -1356,20 +1355,9 @@ function wireEvents() {
 
     try {
       const res = await runWasteReportCompositeQuery({ status, wasteType, locationId });
-      if (res.source === 'firestore-server') {
-        state.reportsServerOverride = res.items;
-        renderReportsTable();
-        showToast(`Firestore server query returned ${res.items.length} report(s).`, 'success');
-      } else if (res.source === 'index-required') {
-        state.reportsServerOverride = null;
-        renderReportsTable();
-        const linkHtml = res.indexUrl
-          ? `<a href="${escapeHtml(res.indexUrl)}" target="_blank" rel="noopener noreferrer">Create Composite Index in Firebase Console</a>`
-          : 'Enable the matching index from <code>firestore.indexes.json</code> in the Firebase Console.';
-        showBanner(
-          `<strong>Composite Index Required for Server Query:</strong> ${linkHtml} (Displaying live client-filtered results in the meantime.)`
-        );
-      }
+      state.reportsServerOverride = res.items;
+      renderReportsTable();
+      showToast(`MongoDB server query returned ${res.items.length} report(s).`, 'success');
     } catch (err) {
       showError(err);
     }
@@ -1572,7 +1560,7 @@ async function bootstrap() {
 
   const conn = await testConnection();
   if (!conn.ok && conn.offline) {
-    showBanner(`<strong>Firestore Offline:</strong> ${escapeHtml(conn.message)}`);
+    showBanner(`<strong>MongoDB Connection Notice:</strong> ${escapeHtml(conn.message)}`);
   }
 
   subscribeAllCollections({
@@ -1592,9 +1580,9 @@ async function bootstrap() {
       state.recycling = items;
       renderAll();
     },
-    onError: (error, colName) => {
+    onError: (error, target) => {
       showBanner(
-        `<strong>Firestore Listener Error (${escapeHtml(colName)}):</strong> ${escapeHtml(
+        `<strong>MongoDB Sync Error (${escapeHtml(target)}):</strong> ${escapeHtml(
           error.message || String(error)
         )}`
       );
